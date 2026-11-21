@@ -15,6 +15,7 @@ import { resolveAssetUrl, resolveIconUrl } from "@/lib/icons";
 import { regionColor } from "@/lib/map/regions";
 import { CategoryIcon } from "@/lib/panels/CategoryIcon";
 import { CategoryPanel } from "@/lib/panels/CategoryPanel";
+import { HeatmapPanel } from "@/lib/panels/HeatmapPanel";
 import { MarkerDetail } from "@/lib/panels/MarkerDetail";
 import {
   CustomMarkerEditor,
@@ -39,6 +40,7 @@ import {
 import type {
   CategoryResponse,
   GameResponse,
+  HeatmapGroupResponse,
   MapResponse,
   RegionResponse,
 } from "@/lib/types";
@@ -53,6 +55,8 @@ export interface MapScreenProps {
   siblings: MapResponse[];
   /** Named polygonal areas of this map (rendered + clickable to zoom). */
   regions: RegionResponse[];
+  /** Heatmap groups of this map (each category toggles a density layer). */
+  heatmapGroups: HeatmapGroupResponse[];
   gameTitle: string;
   /** Per-game branding (colors/font/logo); null when the game has no row. */
   game: GameResponse | null;
@@ -80,6 +84,7 @@ export function MapScreen({
   categories,
   siblings,
   regions,
+  heatmapGroups,
   gameTitle,
   game,
 }: MapScreenProps) {
@@ -111,6 +116,7 @@ export function MapScreen({
     setCustomTarget(null);
     setCustomError(null);
     setHiddenCustomIds(new Set());
+    setActiveHeatmaps(new Set());
     // Re-arm the loading overlay: switching maps rebuilds the MapView map, so
     // onTilesLoaded fires again. allMarkers goes back to null (not the old
     // map's stale list) so the overlay + search hold until the refetch lands.
@@ -126,6 +132,10 @@ export function MapScreen({
   );
   const [hideFound, setHideFound] = useState(false);
   const [popularOnly, setPopularOnly] = useState(false);
+  // Heatmap category ids currently ACTIVE (heatmaps start off, unlike markers).
+  const [activeHeatmaps, setActiveHeatmaps] = useState<Set<number>>(
+    () => new Set(),
+  );
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [showLogin, setShowLogin] = useState(false);
@@ -260,6 +270,39 @@ export function MapScreen({
 
   const showAllCats = () => setHiddenCats(new Set());
   const hideAllCats = () => setHiddenCats(new Set(categories.map((c) => c.id)));
+
+  // Flip one heatmap category between active and off.
+  const toggleHeatmap = (id: number) =>
+    setActiveHeatmaps((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  // Activate or deactivate a batch of heatmap categories (group toggle).
+  const setManyHeatmaps = (ids: number[], activate: boolean) =>
+    setActiveHeatmaps((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (activate) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+
+  // Union of the active heatmap categories' points, for the map's density
+  // layer. null (not []) when nothing is active so MapView clears the source.
+  const heatmapPoints = useMemo(() => {
+    if (activeHeatmaps.size === 0) return null;
+    const pts: [number, number][] = [];
+    for (const g of heatmapGroups) {
+      for (const c of g.categories) {
+        if (activeHeatmaps.has(c.id)) pts.push(...c.points);
+      }
+    }
+    return pts;
+  }, [heatmapGroups, activeHeatmaps]);
 
   const jumpTo = (m: CatalogMarker) => {
     setSelectedId(m.id);
@@ -494,6 +537,7 @@ export function MapScreen({
           categoryIcons={categoryIcons}
           regions={regions}
           regionFocus={regionFocus}
+          heatmapPoints={heatmapPoints}
           customMarkers={visibleCustomMarkers}
           onCustomMarkerClick={openCustomMarker}
           onCustomMarkerDragEnd={onCustomDragEnd}
@@ -865,6 +909,13 @@ export function MapScreen({
             hidden={hiddenCats}
             onToggle={toggleCat}
             onSetMany={setManyHidden}
+          />
+
+          <HeatmapPanel
+            groups={heatmapGroups}
+            active={activeHeatmaps}
+            onToggle={toggleHeatmap}
+            onSetMany={setManyHeatmaps}
           />
         </div>
 

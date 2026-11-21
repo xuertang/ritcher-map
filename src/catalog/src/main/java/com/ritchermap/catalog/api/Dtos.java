@@ -3,6 +3,8 @@ package com.ritchermap.catalog.api;
 import com.ritchermap.catalog.domain.Category;
 import com.ritchermap.catalog.domain.Game;
 import com.ritchermap.catalog.domain.GameMap;
+import com.ritchermap.catalog.domain.HeatmapCategory;
+import com.ritchermap.catalog.domain.HeatmapGroup;
 import com.ritchermap.catalog.domain.Marker;
 import com.ritchermap.catalog.domain.MapStatus;
 import com.ritchermap.catalog.domain.Region;
@@ -256,4 +258,55 @@ public final class Dtos {
     ) {}
 
     public record RegionBulkImportRequest(@NotNull List<RegionBulkRow> regions) {}
+
+    // ---------- Heatmap ----------
+
+    /** Points as `[[x, y], ...]` (pixel space), rendered as a density layer. */
+    public record HeatmapCategoryResponse(
+            long id,
+            long groupId,
+            String name,
+            int sortOrder,
+            List<double[]> points
+    ) {
+        public static HeatmapCategoryResponse from(HeatmapCategory c) {
+            org.locationtech.jts.geom.MultiPoint mp = c.getPoints();
+            List<double[]> pts = new java.util.ArrayList<>(mp.getNumGeometries());
+            for (org.locationtech.jts.geom.Coordinate co : mp.getCoordinates()) {
+                pts.add(new double[] { co.x, co.y });
+            }
+            return new HeatmapCategoryResponse(
+                    c.getId(), c.getGroupId(), c.getName(), c.getSortOrder(), pts);
+        }
+    }
+
+    public record HeatmapGroupResponse(
+            long id,
+            long mapId,
+            String name,
+            String color,
+            int sortOrder,
+            List<HeatmapCategoryResponse> categories
+    ) {
+        public static HeatmapGroupResponse from(HeatmapGroup g, List<HeatmapCategory> cats) {
+            return new HeatmapGroupResponse(
+                    g.getId(), g.getMapId(), g.getName(), g.getColor(), g.getSortOrder(),
+                    cats.stream().map(HeatmapCategoryResponse::from).toList());
+        }
+    }
+
+    public record HeatmapCategoryBulkRow(
+            @NotBlank @Size(max = 200) String name,
+            int sortOrder,
+            @NotNull List<List<Double>> points
+    ) {}
+
+    public record HeatmapGroupBulkRow(
+            @NotBlank @Size(max = 200) String name,
+            @Size(max = 32) String color,
+            int sortOrder,
+            @NotNull List<HeatmapCategoryBulkRow> categories
+    ) {}
+
+    public record HeatmapBulkImportRequest(@NotNull List<HeatmapGroupBulkRow> groups) {}
 }

@@ -10,6 +10,7 @@ import { GATEWAY_URL } from './config';
 import type {
   CategoryResponse,
   GameResponse,
+  HeatmapGroupResponse,
   MapResponse,
   RegionResponse,
 } from './types';
@@ -51,6 +52,16 @@ export async function fetchRegions(
 ): Promise<RegionResponse[]> {
   return (
     (await gatewayJson<RegionResponse[]>(`/api/v1/maps/${mapId}/regions`)) ?? []
+  );
+}
+
+export async function fetchHeatmapGroups(
+  mapId: number,
+): Promise<HeatmapGroupResponse[]> {
+  return (
+    (await gatewayJson<HeatmapGroupResponse[]>(
+      `/api/v1/maps/${mapId}/heatmaps`,
+    )) ?? []
   );
 }
 
