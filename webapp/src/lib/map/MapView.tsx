@@ -47,6 +47,11 @@ import {
   CUSTOM_MARKER_SOURCE_ID,
   customMarkersToGeoJSON,
 } from "./customMarkers";
+import {
+  buildHeatmapLayer,
+  HEATMAP_SOURCE_ID,
+  heatmapPointsToGeoJSON,
+} from "./heatmap";
 import type { CustomMarker } from "../api/customMarkers";
 
 export interface MapViewProps {
@@ -110,6 +115,11 @@ export interface MapViewProps {
    * everything. `null` removes the draft overlay; `[]` shows an (empty) draft.
    */
   draftPolygon?: [number, number][] | null;
+  /**
+   * Union of the active heatmap categories' points (pixel space), rendered as
+   * a density layer beneath the markers. Empty/absent hides the layer.
+   */
+  heatmapPoints?: [number, number][] | null;
   /**
    * The signed-in user's custom markers (already filtered to the visible ones).
    * Rendered as a distinct layer above the catalog markers.
@@ -286,6 +296,12 @@ function buildStyle(meta: MapResponse): StyleSpecification {
         type: "geojson",
         data: EMPTY_FC,
       },
+      // Style-shipped empty like the marker source; the heatmap effect below
+      // seeds it via gated setData when heatmap categories are toggled on.
+      [HEATMAP_SOURCE_ID]: {
+        type: "geojson",
+        data: EMPTY_FC,
+      },
     },
     layers: [
       {
@@ -299,6 +315,8 @@ function buildStyle(meta: MapResponse): StyleSpecification {
         source: "rm-raster",
         paint: { "raster-fade-duration": 150 },
       },
+      // Beneath the markers: heat blobs must never occlude clickable pins.
+      buildHeatmapLayer(meta.minZoom ?? 0, maxZoom),
       ...buildLayers(),
     ],
   };
@@ -321,6 +339,7 @@ export const MapView: React.FC<MapViewProps> = ({
   regionFocus = null,
   drawing = false,
   draftPolygon = null,
+  heatmapPoints = null,
   customMarkers,
   onCustomMarkerClick,
   onCustomMarkerDragEnd,
@@ -931,6 +950,40 @@ export const MapView: React.FC<MapViewProps> = ({
       regionFitOptions(meta.maxZoom ?? undefined),
     );
   }, [mapInstance, regionFocus, regions, meta.maxZoom]);
+
+  // Heatmap overlay: push the active categories' points into the style-shipped
+  // heatmap source. setData-only (the source + layer ship with the style), so
+  // toggling never adds/removes layers. Gated on the SOURCE existing — not
+  // isStyleLoaded(), which flaps false transiently after `load` while a settled
+  // map may never fire another `load`/`idle` (see the icon effect above);
+  // persistent styledata/idle handlers retry until one application lands.
+  useEffect(() => {
+    const map = mapInstance;
+    if (!map) return;
+    const fc = heatmapPointsToGeoJSON(heatmapPoints ?? [], meta.maxZoom ?? 0);
+
+    let applied = false;
+    const tryApply = (): void => {
+      if (applied) return;
+      const src = map.getSource(HEATMAP_SOURCE_ID) as GeoJSONSource | undefined;
+      if (!src) return;
+      applied = true;
+      map.off("styledata", tryApply);
+      map.off("idle", tryApply);
+      src.setData(fc);
+    };
+
+    if (map.getSource(HEATMAP_SOURCE_ID)) {
+      tryApply();
+    } else {
+      map.on("styledata", tryApply);
+      map.on("idle", tryApply);
+    }
+    return () => {
+      map.off("styledata", tryApply);
+      map.off("idle", tryApply);
+    };
+  }, [mapInstance, heatmapPoints, meta.maxZoom]);
 
   // Draft-polygon overlay (admin region authoring): rebuild source + layers on
   // top of everything as vertices change. `null` => no draft; remove it.

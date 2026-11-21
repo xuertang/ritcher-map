@@ -6,6 +6,7 @@ import { breadcrumbJsonLd, JsonLd } from '@/lib/seo/JsonLd';
 import {
   fetchCategories,
   fetchGame,
+  fetchHeatmapGroups,
   fetchMaps,
   fetchRegions,
 } from '@/lib/server';
@@ -47,9 +48,10 @@ export default async function MapPage({ params }: Props) {
   );
   if (!meta) notFound();
 
-  const [categories, regions, game] = await Promise.all([
+  const [categories, regions, heatmapGroups, game] = await Promise.all([
     fetchCategories(gameSlug),
     fetchRegions(meta.id),
+    fetchHeatmapGroups(meta.id),
     fetchGame(gameSlug),
   ]);
   const siblings = maps.filter((m) => m.gameSlug === gameSlug);
@@ -69,6 +71,7 @@ export default async function MapPage({ params }: Props) {
         categories={categories}
         siblings={siblings}
         regions={regions}
+        heatmapGroups={heatmapGroups}
         gameTitle={title}
         game={game}
       />

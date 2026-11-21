@@ -13,6 +13,19 @@
       "runtimeArgs": ["-C", "webapp", "dev"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "webapp-local-gateway",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "NEXT_PUBLIC_GATEWAY_URL=http://localhost:18080",
+        "pnpm",
+        "-C",
+        "webapp",
+        "dev"
+      ],
+      "port": 3000,
+      "autoPort": true
     }
   ]
 }

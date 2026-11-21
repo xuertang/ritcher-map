@@ -58,7 +58,7 @@ function buildTree(categories: CategoryResponse[]): CategoryNode[] {
 }
 
 /** Down chevron that rotates to point right when the group is collapsed. */
-function Chevron({ collapsed }: { collapsed: boolean }) {
+export function Chevron({ collapsed }: { collapsed: boolean }) {
   return (
     <svg
       width="13"
@@ -86,7 +86,7 @@ function Chevron({ collapsed }: { collapsed: boolean }) {
  * the category's own color with a check when shown; an empty outline when
  * hidden; filled with a dash when a group is partially shown.
  */
-function ColorCheck({
+export function ColorCheck({
   color,
   checked,
   indeterminate,

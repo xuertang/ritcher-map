@@ -86,6 +86,27 @@ export interface RegionResponse {
   bbox: Bbox;
 }
 
+/** One toggleable heatmap within a group (e.g. a Pal's spawn points). */
+export interface HeatmapCategoryResponse {
+  id: number;
+  groupId: number;
+  name: string;
+  sortOrder: number;
+  /** [x, y] pixel-space pairs, rendered as a density layer when toggled on. */
+  points: [number, number][];
+}
+
+/** A sidebar section of heatmaps (catalog /api/v1/maps/{id}/heatmaps). */
+export interface HeatmapGroupResponse {
+  id: number;
+  mapId: number;
+  name: string;
+  /** Sidebar accent as #RRGGBB; null when unset. */
+  color: string | null;
+  sortOrder: number;
+  categories: HeatmapCategoryResponse[];
+}
+
 // ----------------------------------------------------------------------------
 // progress: gateway-local, STRING ids on the wire (converted in src/api/progress.ts)
 // ----------------------------------------------------------------------------
