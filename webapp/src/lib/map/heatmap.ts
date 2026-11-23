@@ -13,22 +13,33 @@ const RADIUS_AT_MAX_ZOOM = 128;
 /** Radius floor so far-out zooms keep visible heat spots. */
 const RADIUS_MIN = 6;
 
-/** Heatmap points as a MapLibre FeatureCollection (coords projected to lng/lat). */
+/**
+ * Heatmap points as a MapLibre FeatureCollection (coords projected to lng/lat).
+ * Points sharing a position collapse into ONE feature whose `w` is how many
+ * there were — the layer weighs by `w`, so density is unchanged while a big
+ * heatmap (tens of thousands of points on a coarse grid) stays light to index.
+ */
 export function heatmapPointsToGeoJSON(
   points: [number, number][],
   maxZoom: number,
 ): GeoJSON.FeatureCollection<GeoJSON.Point> {
-  return {
-    type: 'FeatureCollection',
-    features: points.map(([x, y]) => {
-      const { lng, lat } = pixelToLngLat(x, y, maxZoom);
-      return {
-        type: 'Feature' as const,
-        properties: {},
-        geometry: { type: 'Point' as const, coordinates: [lng, lat] },
-      };
-    }),
-  };
+  const weights = new Map<string, { x: number; y: number; w: number }>();
+  for (const [x, y] of points) {
+    const key = `${x},${y}`;
+    const cell = weights.get(key);
+    if (cell) cell.w += 1;
+    else weights.set(key, { x, y, w: 1 });
+  }
+  const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
+  for (const { x, y, w } of weights.values()) {
+    const { lng, lat } = pixelToLngLat(x, y, maxZoom);
+    features.push({
+      type: 'Feature',
+      properties: { w },
+      geometry: { type: 'Point', coordinates: [lng, lat] },
+    });
+  }
+  return { type: 'FeatureCollection', features };
 }
 
 /**
@@ -49,7 +60,8 @@ export function buildHeatmapLayer(
     type: 'heatmap',
     source: HEATMAP_SOURCE_ID,
     paint: {
-      'heatmap-weight': 1,
+      // Each feature counts for as many points as it stands for (see above).
+      'heatmap-weight': ['get', 'w'],
       'heatmap-intensity': 1,
       'heatmap-radius':
         span === 0

@@ -92,7 +92,22 @@ export interface HeatmapCategoryResponse {
   groupId: number;
   name: string;
   sortOrder: number;
-  /** [x, y] pixel-space pairs, rendered as a density layer when toggled on. */
+  /**
+   * How many points the heatmap holds. Present when the list was fetched with
+   * `points=false` (the viewer's default), where `points` comes back empty.
+   */
+  pointCount?: number;
+  /**
+   * [x, y] pixel-space pairs, rendered as a density layer when toggled on; a
+   * repeated pair weighs once per repeat. Empty in the `points=false` listing —
+   * the viewer then loads them per category (see `getHeatmapPoints`).
+   */
+  points: [number, number][];
+}
+
+/** One heatmap category's points (catalog /maps/{id}/heatmaps/points). */
+export interface HeatmapPointsResponse {
+  id: number;
   points: [number, number][];
 }
 

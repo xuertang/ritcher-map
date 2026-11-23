@@ -261,23 +261,47 @@ public final class Dtos {
 
     // ---------- Heatmap ----------
 
-    /** Points as `[[x, y], ...]` (pixel space), rendered as a density layer. */
+    /**
+     * One heatmap category. {@code points} is `[[x, y], ...]` (pixel space),
+     * rendered as a density layer; a repeated point counts once per repeat.
+     * The summary form leaves {@code points} empty and carries only
+     * {@code pointCount}, so a map with hundreds of heatmaps can list them
+     * without shipping every point (see {@link HeatmapPointsResponse}).
+     */
     public record HeatmapCategoryResponse(
             long id,
             long groupId,
             String name,
             int sortOrder,
+            int pointCount,
             List<double[]> points
     ) {
         public static HeatmapCategoryResponse from(HeatmapCategory c) {
-            org.locationtech.jts.geom.MultiPoint mp = c.getPoints();
-            List<double[]> pts = new java.util.ArrayList<>(mp.getNumGeometries());
-            for (org.locationtech.jts.geom.Coordinate co : mp.getCoordinates()) {
-                pts.add(new double[] { co.x, co.y });
-            }
+            List<double[]> pts = pointsOf(c);
             return new HeatmapCategoryResponse(
-                    c.getId(), c.getGroupId(), c.getName(), c.getSortOrder(), pts);
+                    c.getId(), c.getGroupId(), c.getName(), c.getSortOrder(), pts.size(), pts);
         }
+
+        public static HeatmapCategoryResponse summary(
+                long id, long groupId, String name, int sortOrder, int pointCount) {
+            return new HeatmapCategoryResponse(id, groupId, name, sortOrder, pointCount, List.of());
+        }
+    }
+
+    /** One category's points, fetched on demand when the heatmap is switched on. */
+    public record HeatmapPointsResponse(long id, List<double[]> points) {
+        public static HeatmapPointsResponse from(HeatmapCategory c) {
+            return new HeatmapPointsResponse(c.getId(), pointsOf(c));
+        }
+    }
+
+    private static List<double[]> pointsOf(HeatmapCategory c) {
+        org.locationtech.jts.geom.MultiPoint mp = c.getPoints();
+        List<double[]> pts = new java.util.ArrayList<>(mp.getNumGeometries());
+        for (org.locationtech.jts.geom.Coordinate co : mp.getCoordinates()) {
+            pts.add(new double[] { co.x, co.y });
+        }
+        return pts;
     }
 
     public record HeatmapGroupResponse(
@@ -288,10 +312,9 @@ public final class Dtos {
             int sortOrder,
             List<HeatmapCategoryResponse> categories
     ) {
-        public static HeatmapGroupResponse from(HeatmapGroup g, List<HeatmapCategory> cats) {
+        public static HeatmapGroupResponse from(HeatmapGroup g, List<HeatmapCategoryResponse> cats) {
             return new HeatmapGroupResponse(
-                    g.getId(), g.getMapId(), g.getName(), g.getColor(), g.getSortOrder(),
-                    cats.stream().map(HeatmapCategoryResponse::from).toList());
+                    g.getId(), g.getMapId(), g.getName(), g.getColor(), g.getSortOrder(), cats);
         }
     }
 

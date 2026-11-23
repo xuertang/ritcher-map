@@ -55,12 +55,17 @@ export async function fetchRegions(
   );
 }
 
+/**
+ * Heatmap groups + categories WITHOUT their points (names and point counts
+ * only): a map can carry hundreds of heatmaps, so the page ships the list and
+ * the client loads a category's points when it's switched on.
+ */
 export async function fetchHeatmapGroups(
   mapId: number,
 ): Promise<HeatmapGroupResponse[]> {
   return (
     (await gatewayJson<HeatmapGroupResponse[]>(
-      `/api/v1/maps/${mapId}/heatmaps`,
+      `/api/v1/maps/${mapId}/heatmaps?points=false`,
     )) ?? []
   );
 }

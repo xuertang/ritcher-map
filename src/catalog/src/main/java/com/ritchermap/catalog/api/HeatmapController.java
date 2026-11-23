@@ -1,7 +1,9 @@
 package com.ritchermap.catalog.api;
 
 import com.ritchermap.catalog.api.Dtos.HeatmapBulkImportRequest;
+import com.ritchermap.catalog.api.Dtos.HeatmapCategoryResponse;
 import com.ritchermap.catalog.api.Dtos.HeatmapGroupResponse;
+import com.ritchermap.catalog.api.Dtos.HeatmapPointsResponse;
 import com.ritchermap.catalog.service.HeatmapService;
 import com.ritchermap.catalog.service.HeatmapService.BulkCategory;
 import com.ritchermap.catalog.service.HeatmapService.BulkGroup;
@@ -18,10 +20,37 @@ public class HeatmapController {
 
     public HeatmapController(HeatmapService heatmaps) { this.heatmaps = heatmaps; }
 
+    /**
+     * The map's heatmap groups with their categories. {@code points=false}
+     * returns each category with an empty {@code points} array and only its
+     * {@code pointCount}; the viewer uses that and loads points per category
+     * on demand, since a large map's full set runs to megabytes.
+     */
     @GetMapping("/maps/{mapId}/heatmaps")
-    public List<HeatmapGroupResponse> list(@PathVariable long mapId) {
+    public List<HeatmapGroupResponse> list(@PathVariable long mapId,
+                                           @RequestParam(defaultValue = "true") boolean points) {
+        if (!points) {
+            return heatmaps.listSummaries(mapId).stream()
+                    .map(g -> HeatmapGroupResponse.from(g.group(), g.categories().stream()
+                            .map(c -> HeatmapCategoryResponse.summary(
+                                    c.getId(), c.getGroupId(), c.getName(),
+                                    c.getSortOrder(), c.getPointCount()))
+                            .toList()))
+                    .toList();
+        }
         return heatmaps.list(mapId).stream()
-                .map(g -> HeatmapGroupResponse.from(g.group(), g.categories()))
+                .map(g -> HeatmapGroupResponse.from(g.group(), g.categories().stream()
+                        .map(HeatmapCategoryResponse::from)
+                        .toList()))
+                .toList();
+    }
+
+    /** Points of the given heatmap categories ({@code ?ids=1,2,3}) of this map. */
+    @GetMapping("/maps/{mapId}/heatmaps/points")
+    public List<HeatmapPointsResponse> points(@PathVariable long mapId,
+                                              @RequestParam(required = false) List<Long> ids) {
+        return heatmaps.points(mapId, ids).stream()
+                .map(HeatmapPointsResponse::from)
                 .toList();
     }
 

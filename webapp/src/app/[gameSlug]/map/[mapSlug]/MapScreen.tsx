@@ -2,8 +2,9 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  getHeatmapPoints,
   getMarkers,
   registerMarkerClick,
   type CatalogMarker,
@@ -117,6 +118,9 @@ export function MapScreen({
     setCustomError(null);
     setHiddenCustomIds(new Set());
     setActiveHeatmaps(new Set());
+    setHeatmapPointsById(new Map());
+    setHeatmapLoading(new Set());
+    heatmapMapRef.current = meta.id;
     // Re-arm the loading overlay: switching maps rebuilds the MapView map, so
     // onTilesLoaded fires again. allMarkers goes back to null (not the old
     // map's stale list) so the overlay + search hold until the refetch lands.
@@ -136,6 +140,18 @@ export function MapScreen({
   const [activeHeatmaps, setActiveHeatmaps] = useState<Set<number>>(
     () => new Set(),
   );
+  // Heatmap points arrive on demand: the page ships only names + counts, and a
+  // category's points are fetched the first time it's switched on, then kept.
+  const [heatmapPointsById, setHeatmapPointsById] = useState<
+    Map<number, [number, number][]>
+  >(() => new Map());
+  // Category ids with a points request in flight (the panel pulses them).
+  const [heatmapLoading, setHeatmapLoading] = useState<Set<number>>(
+    () => new Set(),
+  );
+  // The map the cache belongs to, so a late response for a map the player has
+  // since left is dropped instead of leaking into the new map's cache.
+  const heatmapMapRef = useRef(meta.id);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [showLogin, setShowLogin] = useState(false);
@@ -271,17 +287,60 @@ export function MapScreen({
   const showAllCats = () => setHiddenCats(new Set());
   const hideAllCats = () => setHiddenCats(new Set(categories.map((c) => c.id)));
 
+  // Fetch the points of any of these heatmap categories we don't hold yet.
+  // Categories that came with inline points (a catalog that ignores
+  // `points=false`) need no fetch. On failure the categories are switched back
+  // off, so the toggle visibly bounces and a second click retries.
+  const loadHeatmapPoints = (ids: number[]) => {
+    const inline = new Set<number>();
+    for (const g of heatmapGroups) {
+      for (const c of g.categories) if (c.points.length > 0) inline.add(c.id);
+    }
+    const missing = ids.filter(
+      (id) =>
+        !inline.has(id) &&
+        !heatmapPointsById.has(id) &&
+        !heatmapLoading.has(id),
+    );
+    if (missing.length === 0) return;
+    const mapId = meta.id;
+    const settle = (prev: Set<number>) => {
+      const next = new Set(prev);
+      for (const id of missing) next.delete(id);
+      return next;
+    };
+    setHeatmapLoading((prev) => new Set([...prev, ...missing]));
+    getHeatmapPoints(mapId, missing)
+      .then((rows) => {
+        if (heatmapMapRef.current !== mapId) return;
+        setHeatmapPointsById((prev) => {
+          const next = new Map(prev);
+          for (const r of rows) next.set(r.id, r.points);
+          return next;
+        });
+        setHeatmapLoading(settle);
+      })
+      .catch(() => {
+        if (heatmapMapRef.current !== mapId) return;
+        setHeatmapLoading(settle);
+        setActiveHeatmaps(settle);
+      });
+  };
+
   // Flip one heatmap category between active and off.
-  const toggleHeatmap = (id: number) =>
+  const toggleHeatmap = (id: number) => {
+    if (!activeHeatmaps.has(id)) loadHeatmapPoints([id]);
     setActiveHeatmaps((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+  };
 
   // Activate or deactivate a batch of heatmap categories (group toggle).
-  const setManyHeatmaps = (ids: number[], activate: boolean) =>
+  const setManyHeatmaps = (ids: number[], activate: boolean) => {
+    if (activate) loadHeatmapPoints(ids);
     setActiveHeatmaps((prev) => {
       const next = new Set(prev);
       for (const id of ids) {
@@ -290,19 +349,25 @@ export function MapScreen({
       }
       return next;
     });
+  };
 
   // Union of the active heatmap categories' points, for the map's density
   // layer. null (not []) when nothing is active so MapView clears the source.
+  // A category still loading contributes nothing until its points land.
   const heatmapPoints = useMemo(() => {
     if (activeHeatmaps.size === 0) return null;
     const pts: [number, number][] = [];
     for (const g of heatmapGroups) {
       for (const c of g.categories) {
-        if (activeHeatmaps.has(c.id)) pts.push(...c.points);
+        if (!activeHeatmaps.has(c.id)) continue;
+        const own =
+          c.points.length > 0 ? c.points : heatmapPointsById.get(c.id);
+        // Plain loop: a big heatmap overflows the argument limit of push(...).
+        if (own) for (const p of own) pts.push(p);
       }
     }
     return pts;
-  }, [heatmapGroups, activeHeatmaps]);
+  }, [heatmapGroups, activeHeatmaps, heatmapPointsById]);
 
   const jumpTo = (m: CatalogMarker) => {
     setSelectedId(m.id);
@@ -912,10 +977,13 @@ export function MapScreen({
           />
 
           <HeatmapPanel
+            // Remount per map so the collapsed-by-default rule re-evaluates.
+            key={meta.id}
             groups={heatmapGroups}
             active={activeHeatmaps}
             onToggle={toggleHeatmap}
             onSetMany={setManyHeatmaps}
+            loading={heatmapLoading}
           />
         </div>
 
