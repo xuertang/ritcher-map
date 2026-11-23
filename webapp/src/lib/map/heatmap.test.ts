@@ -20,6 +20,19 @@ describe('heatmapPointsToGeoJSON', () => {
     expect(back.y).toBeCloseTo(120, 6);
   });
 
+  it('collapses repeated points into one weighted feature', () => {
+    const fc = heatmapPointsToGeoJSON(
+      [
+        [100, 120],
+        [2048, 4096],
+        [100, 120],
+        [100, 120],
+      ],
+      MAX_ZOOM,
+    );
+    expect(fc.features.map((f) => f.properties?.w)).toEqual([3, 1]);
+  });
+
   it('returns an empty collection for no points', () => {
     expect(heatmapPointsToGeoJSON([], MAX_ZOOM).features).toHaveLength(0);
   });
@@ -47,6 +60,14 @@ describe('buildHeatmapLayer', () => {
       'heatmap-radius'
     ] as unknown[];
     expect(radius[4]).toBe(6); // not 128 / 2^8 = 0.5
+  });
+
+  it('weighs each feature by the points it stands for', () => {
+    const layer = buildHeatmapLayer(0, 4);
+    expect((layer.paint as Record<string, unknown>)['heatmap-weight']).toEqual([
+      'get',
+      'w',
+    ]);
   });
 
   it('uses a constant radius when the map has a single zoom level', () => {

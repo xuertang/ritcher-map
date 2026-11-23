@@ -73,6 +73,8 @@ func TestCatalogReadsPublicWritesAdmin(t *testing.T) {
 		{"anon read markers", http.MethodGet, "/api/v1/markers", "", http.StatusOK},
 		{"anon read regions", http.MethodGet, "/api/v1/maps/1/regions", "", http.StatusOK},
 		{"anon read heatmaps", http.MethodGet, "/api/v1/maps/1/heatmaps", "", http.StatusOK},
+		{"anon read heatmap list without points", http.MethodGet, "/api/v1/maps/1/heatmaps?points=false", "", http.StatusOK},
+		{"anon read heatmap points", http.MethodGet, "/api/v1/maps/1/heatmaps/points?ids=1,2", "", http.StatusOK},
 		// Popularity clicks are public (anonymous players count too) — but only
 		// that exact verb+path; other marker writes stay admin-gated below.
 		{"anon marker click", http.MethodPost, "/api/v1/markers/5/click", "", http.StatusOK},

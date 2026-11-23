@@ -61,8 +61,15 @@ public class HeatmapService {
         if (!maps.existsById(mapId)) throw NotFoundException.of("map", mapId);
     }
 
+    /** Upper bound on categories per points request (keeps one response bounded). */
+    public static final int MAX_POINT_IDS = 200;
+
     /** A group with its categories, in display order. */
     public record GroupWithCategories(HeatmapGroup group, List<HeatmapCategory> categories) {}
+
+    /** A group with its categories' summaries (no geometry), in display order. */
+    public record GroupWithSummaries(HeatmapGroup group,
+                                     List<HeatmapCategoryRepository.Summary> categories) {}
 
     @Transactional(readOnly = true)
     public List<GroupWithCategories> list(long mapId) {
@@ -78,6 +85,43 @@ public class HeatmapService {
         return gs.stream()
                 .map(g -> new GroupWithCategories(g, byGroup.getOrDefault(g.getId(), List.of())))
                 .toList();
+    }
+
+    /**
+     * Same listing as {@link #list} but without the points — each category
+     * carries only its point count. The sidebar needs names and counts; points
+     * are fetched per category via {@link #points} when a heatmap is turned on.
+     */
+    @Transactional(readOnly = true)
+    public List<GroupWithSummaries> listSummaries(long mapId) {
+        requireMap(mapId);
+        List<HeatmapGroup> gs = groups.findAllByMapIdOrderBySortOrderAscNameAsc(mapId);
+        if (gs.isEmpty()) return List.of();
+        List<Long> ids = gs.stream().map(HeatmapGroup::getId).toList();
+        Map<Long, List<HeatmapCategoryRepository.Summary>> byGroup = categories
+                .findSummariesByGroupIdIn(ids)
+                .stream()
+                .collect(Collectors.groupingBy(HeatmapCategoryRepository.Summary::getGroupId));
+        return gs.stream()
+                .map(g -> new GroupWithSummaries(g, byGroup.getOrDefault(g.getId(), List.of())))
+                .toList();
+    }
+
+    /**
+     * The given categories' points. Ids that don't exist or belong to another
+     * map are silently left out, so the caller gets back exactly what it may see.
+     */
+    @Transactional(readOnly = true)
+    public List<HeatmapCategory> points(long mapId, List<Long> categoryIds) {
+        requireMap(mapId);
+        if (categoryIds == null || categoryIds.isEmpty()) {
+            throw new IllegalArgumentException("ids must name at least 1 heatmap category");
+        }
+        if (categoryIds.size() > MAX_POINT_IDS) {
+            throw new IllegalArgumentException(
+                    "at most " + MAX_POINT_IDS + " heatmap category ids per request");
+        }
+        return categories.findAllByMapIdAndIdIn(mapId, categoryIds);
     }
 
     /** Flat bulk-import rows (map seeding). */

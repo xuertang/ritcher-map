@@ -13,7 +13,12 @@ export interface HeatmapPanelProps {
   onToggle: (id: number) => void;
   /** Activate (true) or deactivate (false) a batch of ids — group toggles. */
   onSetMany: (ids: number[], active: boolean) => void;
+  /** Category ids whose points are still being fetched (shown pulsing). */
+  loading?: Set<number>;
 }
+
+/** Above this many groups the list opens collapsed (it'd be pages long). */
+const EXPANDED_GROUPS_MAX = 6;
 
 /** Group accent, normalizing MapGenie's bare "RRGGBB" hex. */
 function groupColor(group: HeatmapGroupResponse): string {
@@ -28,16 +33,23 @@ function groupColor(group: HeatmapGroupResponse): string {
  * header with a master toggle; its categories render as a two-column grid of
  * name + point count. Unlike marker categories (visible by default, toggled
  * off), heatmaps start OFF and toggle on; every active category's points merge
- * into one density layer on the map.
+ * into one density layer on the map. Points load when a category is switched
+ * on, so the count comes from `pointCount` rather than the points themselves.
  */
 export const HeatmapPanel: React.FC<HeatmapPanelProps> = ({
   groups,
   active,
   onToggle,
   onSetMany,
+  loading,
 }) => {
-  // Collapsed group ids; groups start expanded.
-  const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set());
+  // Collapsed group ids. A few groups start expanded; a long list (a map with
+  // dozens of heatmap groups) starts collapsed so the sidebar stays scannable.
+  const [collapsed, setCollapsed] = useState<Set<number>>(() =>
+    groups.length > EXPANDED_GROUPS_MAX
+      ? new Set(groups.map((g) => g.id))
+      : new Set(),
+  );
 
   const displayed = groups.filter((g) => g.categories.length > 0);
   if (displayed.length === 0) return null;
@@ -104,7 +116,7 @@ export const HeatmapPanel: React.FC<HeatmapPanelProps> = ({
                       onClick={() => onToggle(cat.id)}
                       className={`flex items-center gap-1.5 rounded-md px-1 py-1 text-left text-sm hover:bg-white/5${
                         isActive ? '' : ' opacity-40'
-                      }`}
+                      }${isActive && loading?.has(cat.id) ? ' animate-pulse' : ''}`}
                     >
                       <span
                         aria-hidden="true"
@@ -117,7 +129,7 @@ export const HeatmapPanel: React.FC<HeatmapPanelProps> = ({
                       />
                       <span className="min-w-0 flex-1 truncate">{cat.name}</span>
                       <span className="flex-none text-xs font-bold tabular-nums text-fg">
-                        {cat.points.length}
+                        {cat.pointCount ?? cat.points.length}
                       </span>
                     </button>
                   );
